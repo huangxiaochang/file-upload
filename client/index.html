@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>文件断点续传</title>
+</head>
+<body>
+	<input type="file" name="file" onchange="handleFile(event)">
+	<button onclick="startUpload(event)">上传</button>
+	<button onclick="pauseUpload(event)">暂停</button>
+	<button onclick="reUpload(event)">继续上传</button>
+	<br>
+	<br>
+	<p>hash计算进度</p>
+	<progress value="0" max="100" id="hashProgress"></progress>
+	<br>
+	<br>
+	<p>上传进度</p>
+	<progress value="0" max="100" id="progress"></progress>
+
+	<script type="text/javascript" src="./index.js"></script>
+	<script type="text/javascript">
+		var progress = document.getElementById('progress')
+		var hashProgress = document.getElementById('hashProgress')
+
+		const fileUpload = new FileUpload({
+			url: 'http://localhost:3000/upload',
+			onHashChange: handleHashChange,
+			onProgress: handleProgress,
+			onSuccess: function (res) {
+				console.log(res, 'res')
+			},
+			onError: function (err) {
+				console.log(err)
+			}
+		});
+		
+		function handleHashChange (percentage) {
+			hashProgress.value = percentage
+		}
+		
+		function handleProgress (percentage) {
+			progress.value = percentage
+		}
+
+		var file = null
+		function handleFile (ev) {
+			file = ev.target.files[0]
+			fileUpload.setFile(file).then(function (data) {
+				progress.value = data
+			})
+		}
+
+		function startUpload () {
+			if (!file) {
+				return
+			}
+			fileUpload.upload(file)
+		}
+		function pauseUpload () {
+			fileUpload.cancelUpload()
+		}
+		function reUpload () {
+			fileUpload.reUpload()
+		}
+	</script>
+</body>
+</html>
