@@ -24,6 +24,7 @@
 
 		const fileUpload = new FileUpload({
 			url: 'http://localhost:3000/upload',
+			chunkSize: 1024 * 1024 * 2,
 			onHashChange: handleHashChange,
 			onProgress: handleProgress,
 			onSuccess: function (res) {

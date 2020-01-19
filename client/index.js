@@ -3,8 +3,10 @@
 	const assetType = function (val, type) {
 		return Object.prototype.toString.call(val) === `[object ${type}]`
 	}
-	const maxChunk = 6 // 最大切片数量
-
+	// 每个切片的大小
+	const chunkSize = 1024 * 1024 * 10 // 10MB
+	// 每次最大的请求个数
+	const maxRequest = 6
 	/* 封装xhr请求
 		@return promise
 	*/
@@ -84,13 +86,16 @@
 			this._onTimeoutCbs = [] // 文件上传超时的回调
 			this._url = url
 			this._options = options
-			this._maxChunk = maxChunk
+			this._maxChunk = 0
+			this._chunkSize = 0
 			this._chunkNum = 0 // 实际的切片数量
 			this._hash = null // 文件的内容hash
 			this._loadedChunk = [] // 已经上传的chunk
 			this._loadedPercentage = 0 // 已经上传的比例
 			// 最大的chunk数量
 			assetType(options.maxChunk, 'Number') && (this._maxChunk = options.maxChunk)
+			// 每个chunk的大小
+			assetType(options.chunkSize, 'Number') && (this._chunkSize = options.chunkSize)
 
 			assetType(options.onHashChange, 'Function') && this._onHashChangeCbs.push(options.onHashChange)
 			assetType(options.onProgress, 'Function') && this._onProgressCbs.push(options.onProgress)
@@ -153,12 +158,14 @@
 		/*
 			进行文件切片
 			@params file 文件对象
-			@params length 切片数量
 		 */
-		_sliceFile (file, length=maxChunk) {
+		_sliceFile (file) {
 			if (!file) { return false }
-			// 切片的个数有可能比length少一个
-			const chunkSize = Math.ceil(file.size / length)
+			// 如果指定每个chunk的个数，则按照个数来切分文件,否则按照chunk的大小
+			const chunkSize = this._maxChunk === 0
+												? (this._chunkSize || chunkSize) // 默认为10MB
+												: Math.ceil(file.size / length) // 切片的个数有可能比length少一个
+
 			this._chunks = []
 			let cur = 0
 			let index = 0
@@ -223,9 +230,17 @@
 		_uploadChunk (chunks, loadedChunks) {
 			const chunkRequestList = []
 
-			for (let chunk of chunks) {
+			// 一次最大只能发起maxRequest个请求，然后每完成一个，就接着发送
+			let num = 6
+
+			var runQueue = (function (index) {
+				if (index >= this._chunks.length) {
+					return 
+				}
+				chunk = this._chunks[index]
 				chunk.hash = this._hash
 				let key = `${this._hash}-${chunk.index}`
+
 				if (!loadedChunks.includes(key)) {
 					let formData = new FormData()
 					formData.append('chunk', chunk.chunk)
@@ -238,13 +253,25 @@
 						method: 'POST',
 						data: formData,
 						requestList: this._requests,
+						onload: nextUpload(),
 						onprogress: this._uploadChunkProgress(chunk)
 					}))
 				} else {
 					// 表示已经加载完成，用于计算中的进度, 如果已经全部上传，可以达到秒传的效果
 					chunk.percentage = 1
 					this._uploadProgress()
+					runQueue(num++)
 				}
+			}).bind(this)
+
+			function nextUpload () {
+				return function (val) {
+					runQueue(num++)
+				}
+			}
+
+			for (let i = 0 ; i < maxRequest; i++) {
+				runQueue(i)
 			}
 		},
 		/*
@@ -352,6 +379,7 @@
 			this._url = null
 			this._options = null
 			this._maxChunk = null
+			this._chunkSize = null
 			this._loadedChunk = null
 			this._file = null
 		}
